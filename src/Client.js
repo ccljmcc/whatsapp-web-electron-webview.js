@@ -30,6 +30,8 @@ const NoAuth = require('./authStrategies/NoAuth');
  * @param {string} options.ffmpegPath - Ffmpeg path to use when formating videos to webp while sending stickers 
  * @param {boolean} options.bypassCSP - Sets bypassing of page's Content-Security-Policy.
  * @param {object} options.proxyAuthentication - Proxy Authentication object.
+ * @param {object} options.browserWSEndpoint - A browser websocket endpoint link
+ * @param {object} options.sessionId - Set up in advance electron.webview.executeJavaScript('`window.puppeteer = "${sessionId}"`'), Match current puppeteer Page from webview
  * 
  * @fires Client#qr
  * @fires Client#authenticated
@@ -86,41 +88,77 @@ class Client extends EventEmitter {
      * Sets up events and requirements, kicks off authentication request
      */
     async initialize() {
-        let [browser, page] = [null, null];
+        let [browser, page] = [null, null]
 
         await this.authStrategy.beforeBrowserInitialized();
-
+  
         const puppeteerOpts = this.options.puppeteer;
         if (puppeteerOpts && puppeteerOpts.browserWSEndpoint) {
             browser = await puppeteer.connect(puppeteerOpts);
-            page = await browser.newPage();
+            const targets = await browser.targets()
+            const pages = await Promise.all(
+              targets.map(async (target) => {
+                try {
+                  return await target.page()
+                } catch {
+                  return undefined
+                }
+              })
+            )
+      
+            const guids = await Promise.all(
+              pages.map(async (testPage) => {
+                try {
+                  return await testPage.evaluate('window.puppeteer')
+                } catch {
+                  return undefined
+                }
+              })
+            )
+            
+            const index = guids.findIndex((testGuid) => testGuid === this.options.sessionId)
+            if(guids[index]){
+              page = await pages[index]
+            } else if(this.pupPage){
+              page =this.pupPage
+            } else {
+              throw new Error('Unable to find puppeteer Page from webview. Please report this.')
+            }
+      
+         
         } else {
             const browserArgs = [...(puppeteerOpts.args || [])];
             if(!browserArgs.find(arg => arg.includes('--user-agent'))) {
                 browserArgs.push(`--user-agent=${this.options.userAgent}`);
             }
-
             browser = await puppeteer.launch({...puppeteerOpts, args: browserArgs});
             page = (await browser.pages())[0];
         }
-
+  
+     
+  
+        await page.evaluate('delete window.puppeteer')
+  
+       
+  
+  
         if (this.options.proxyAuthentication !== undefined) {
-            await page.authenticate(this.options.proxyAuthentication);
+          await page.authenticate(this.options.proxyAuthentication)
         }
-      
-        await page.setUserAgent(this.options.userAgent);
-        if (this.options.bypassCSP) await page.setBypassCSP(true);
-
-        this.pupBrowser = browser;
-        this.pupPage = page;
-
-        await this.authStrategy.afterBrowserInitialized();
-
+        
+        await page.setUserAgent(this.options.userAgent)
+  
+        if (this.options.bypassCSP) await page.setBypassCSP(true)
+  
+        this.pupBrowser = browser
+        this.pupPage = page
+        await this.authStrategy.afterBrowserInitialized()
+  
         await page.goto(WhatsWebURL, {
-            waitUntil: 'load',
-            timeout: 0,
-            referer: 'https://whatsapp.com/'
-        });
+          waitUntil: 'load',
+          // timeout: 0,
+          referer: 'https://whatsapp.com/'
+        })
 
         await page.evaluate(`function getElementByXpath(path) {
             return document.evaluate(path, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;

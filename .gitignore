@@ -71,3 +71,5 @@ typings/
 # Test sessions
 *session.json
 .wwebjs_auth/
+
+.history
