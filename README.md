@@ -1,6 +1,7 @@
-[![npm](https://img.shields.io/npm/v/whatsapp-web.js.svg)](https://www.npmjs.com/package/whatsapp-web.js) [![Depfu](https://badges.depfu.com/badges/4a65a0de96ece65fdf39e294e0c8dcba/overview.svg)](https://depfu.com/github/pedroslopez/whatsapp-web.js?project_id=9765) ![WhatsApp_Web 2.2306.7](https://img.shields.io/badge/WhatsApp_Web-2.2306.7-brightgreen.svg) [![Discord Chat](https://img.shields.io/discord/698610475432411196.svg?logo=discord)](https://discord.gg/H7DqQs4)  
+[![npm](https://img.shields.io/npm/v/whatsapp-web.js.svg)](https://www.npmjs.com/package/whatsapp-web.js) [![Depfu](https://badges.depfu.com/badges/4a65a0de96ece65fdf39e294e0c8dcba/overview.svg)](https://depfu.com/github/pedroslopez/whatsapp-web.js?project_id=9765) ![WhatsApp_Web 2.2306.7](https://img.shields.io/badge/WhatsApp_Web-2.2306.7-brightgreen.svg) [![Discord Chat](https://img.shields.io/discord/698610475432411196.svg?logo=discord)](https://discord.gg/H7DqQs4)
 
 # whatsapp-web.js
+
 A WhatsApp API client that connects through the WhatsApp Web browser app
 
 It uses Puppeteer to run a real instance of Whatsapp Web to avoid getting blocked.
@@ -9,10 +10,10 @@ It uses Puppeteer to run a real instance of Whatsapp Web to avoid getting blocke
 
 ## Quick Links
 
-* [Guide / Getting Started](https://wwebjs.dev/guide) _(work in progress)_
-* [Reference documentation](https://docs.wwebjs.dev/)
-* [GitHub](https://github.com/pedroslopez/whatsapp-web.js)
-* [npm](https://npmjs.org/package/whatsapp-web.js)
+- [Guide / Getting Started](https://wwebjs.dev/guide) _(work in progress)_
+- [Reference documentation](https://docs.wwebjs.dev/)
+- [GitHub](https://github.com/pedroslopez/whatsapp-web.js)
+- [npm](https://npmjs.org/package/whatsapp-web.js)
 
 ## Installation
 
@@ -23,64 +24,119 @@ Please note that Node v12+ is required.
 ## Example usage
 
 ```js
-const { Client } = require('whatsapp-web.js');
+// Electron Example
 
-const client = new Client();
+import { app } from "electron";
+let debugJsonUrl = "";
+const installRemoteDebug = async (port = 0, address = "127.0.0.1") => {
+  if (!app) {
+    throw new Error(
+      "The parameter 'app' was not passed in. " +
+        "This may indicate that you are running in node rather than electron."
+    );
+  }
 
-client.on('qr', (qr) => {
-    // Generate and scan this code with your phone
-    console.log('QR RECEIVED', qr);
-});
+  if (app.isReady()) {
+    throw new Error(
+      "Must be called at startup before the electron app is ready."
+    );
+  }
 
-client.on('ready', () => {
-    console.log('Client is ready!');
-});
+  if (port < 0 || port > 65535) {
+    throw new Error(`Invalid port ${port}.`);
+  }
 
-client.on('message', msg => {
-    if (msg.body == '!ping') {
-        msg.reply('pong');
+  if (app.commandLine.getSwitchValue("remote-debugging-port")) {
+    throw new Error(
+      "The electron application is already listening on a port. Double `initialize`?"
+    );
+  }
+
+  const actualPort = port === 0 ? await getPort({ host: address }) : port;
+
+  // 设置默认ua
+  app.userAgentFallback = globalConfig.appUserAgent;
+  // 开启debug
+  app.commandLine.appendSwitch("remote-debugging-port", `${actualPort}`);
+  app.commandLine.appendSwitch("remote-debugging-address", address);
+  const electronMajor = parseInt(app.getVersion().split(".")[0], 10);
+  // NetworkService crashes in electron 6.
+  if (electronMajor >= 7) {
+    app.commandLine.appendSwitch("enable-features", "NetworkService");
+  }
+
+  debugJsonUrl = `http://${address}:${actualPort}`;
+};
+installRemoteDebug()
+
+
+// Webview  Example
+import { v4 } from "uuid";
+const ses = v4()
+const webview = document.createElement('webview')
+webview.setAttribute('src','about:blank')
+webview.setAttribute('partition',`persist:${ses}`)
+body.appendChild(webview)
+webview.addEventListener('dom-ready',  async () => {
+    // 注入唯一id，让puppeteer找到对应的page
+    await webview.executeJavaScript(`window.puppeteer = ${ses}`)
+    const { Client } = require("whatsapp-web.js");
+
+    const client = new Client({browserWSEndpoint:debugJsonUrl,sessionId:ses});
+
+    client.on("ready", () => {
+        console.log("Client is ready!");
+    });
+
+    client.on("message", (msg) => {
+    if (msg.body == "!ping") {
+        msg.reply("pong");
     }
-});
+    });
 
-client.initialize();
+    client.initialize();
+    
+},
+{ once: true }
+)
+
 ```
 
 Take a look at [example.js](https://github.com/pedroslopez/whatsapp-web.js/blob/master/example.js) for another example with more use cases.
 
 For more information on saving and restoring sessions, check out the available [Authentication Strategies](https://wwebjs.dev/guide/authentication.html).
 
-
 ## Supported features
 
-| Feature  | Status |
-| ------------- | ------------- |
-| Multi Device  | ✅  |
-| Send messages  | ✅  |
-| Receive messages  | ✅  |
-| Send media (images/audio/documents)  | ✅  |
-| Send media (video)  | ✅ [(requires google chrome)](https://wwebjs.dev/guide/handling-attachments.html#caveat-for-sending-videos-and-gifs)  |
-| Send stickers | ✅ |
-| Receive media (images/audio/video/documents)  | ✅  |
-| Send contact cards | ✅ |
-| Send location | ✅ |
-| Send buttons | ✅ |
-| Send lists | ✅ (business accounts not supported) |
-| Receive location | ✅ | 
-| Message replies | ✅ |
-| Join groups by invite  | ✅ |
-| Get invite for group  | ✅ |
-| Modify group info (subject, description)  | ✅  |
-| Modify group settings (send messages, edit info)  | ✅  |
-| Add group participants  | ✅  |
-| Kick group participants  | ✅  |
-| Promote/demote group participants | ✅ |
-| Mention users | ✅ |
-| Mute/unmute chats | ✅ |
-| Block/unblock contacts | ✅ |
-| Get contact info | ✅ |
-| Get profile pictures | ✅ |
-| Set user status message | ✅ |
-| React to messages | ✅ |
+| Feature                                          | Status                                                                                                               |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Multi Device                                     | ✅                                                                                                                   |
+| Send messages                                    | ✅                                                                                                                   |
+| Receive messages                                 | ✅                                                                                                                   |
+| Send media (images/audio/documents)              | ✅                                                                                                                   |
+| Send media (video)                               | ✅ [(requires google chrome)](https://wwebjs.dev/guide/handling-attachments.html#caveat-for-sending-videos-and-gifs) |
+| Send stickers                                    | ✅                                                                                                                   |
+| Receive media (images/audio/video/documents)     | ✅                                                                                                                   |
+| Send contact cards                               | ✅                                                                                                                   |
+| Send location                                    | ✅                                                                                                                   |
+| Send buttons                                     | ✅                                                                                                                   |
+| Send lists                                       | ✅ (business accounts not supported)                                                                                 |
+| Receive location                                 | ✅                                                                                                                   |
+| Message replies                                  | ✅                                                                                                                   |
+| Join groups by invite                            | ✅                                                                                                                   |
+| Get invite for group                             | ✅                                                                                                                   |
+| Modify group info (subject, description)         | ✅                                                                                                                   |
+| Modify group settings (send messages, edit info) | ✅                                                                                                                   |
+| Add group participants                           | ✅                                                                                                                   |
+| Kick group participants                          | ✅                                                                                                                   |
+| Promote/demote group participants                | ✅                                                                                                                   |
+| Mention users                                    | ✅                                                                                                                   |
+| Mute/unmute chats                                | ✅                                                                                                                   |
+| Block/unblock contacts                           | ✅                                                                                                                   |
+| Get contact info                                 | ✅                                                                                                                   |
+| Get profile pictures                             | ✅                                                                                                                   |
+| Set user status message                          | ✅                                                                                                                   |
+| React to messages                                | ✅                                                                                                                   |
 
 Something missing? Make an issue and let us know!
 
